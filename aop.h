@@ -114,6 +114,7 @@ void aop_execute_internal(zend_execute_data *current_execute_data, zval *return_
 static zval_pointcut_dtor(zval *zv); 
 
 extern zend_module_entry aop_module_entry;
+zval *func_get_args(zend_execute_data *ex);
 #define phpext_aop_ptr &aop_module_entry
 
 

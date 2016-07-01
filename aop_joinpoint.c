@@ -30,6 +30,8 @@
 
 PHP_METHOD(AopJoinpoint, getArguments){
     aop_joinpoint_object* this = GET_THIS();
+    //RETURN_NULL();
+    //RETURN_ZVAL(func_get_args(this->original->prev_execute_data), 1, 0);
     /*
     AopJoinpoint_object *obj = (AopJoinpoint_object *)zend_object_store_get_object(getThis() TSRMLS_CC);
     if (obj->args == NULL) {

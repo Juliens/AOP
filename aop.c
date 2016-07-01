@@ -20,6 +20,7 @@
 #endif
 
 #include "php.h"
+#include "/usr/local/include/node/node.h"
 #include "main/php_ini.h"
 #include "ext/standard/php_string.h"
 #include "ext/pcre/php_pcre.h"
@@ -30,6 +31,7 @@
 #include "Zend/zend_operators.h"
 #include "Zend/zend_exceptions.h"
 #include "Zend/zend_interfaces.h"
+#include "zend_extensions.h"
 
 ZEND_DECLARE_MODULE_GLOBALS(aop)
 
@@ -87,6 +89,64 @@ static pointcut_dtor(pointcut *pc) {
         aop_func_info_dtor(pc->function_info);
     }
     efree(pc);
+
+}
+
+zval *func_get_args(zend_execute_data *ex) {
+	zval *p, *q;
+    zval *return_value;
+	uint32_t arg_count, first_extra_arg;
+	uint32_t i, n;
+
+	if (ZEND_CALL_INFO(ex) & ZEND_CALL_CODE) {
+		zend_error(E_WARNING, "func_get_args():  Called from the global scope - no function context");
+        return NULL;
+	}
+
+	arg_count = ZEND_CALL_NUM_ARGS(ex);
+    //php_printf ("%d", arg_count);
+
+	array_init_size(return_value, arg_count);
+	if (arg_count) {
+		first_extra_arg = ex->func->op_array.num_args;
+		zend_hash_real_init(Z_ARRVAL_P(return_value), 1);
+		ZEND_HASH_FILL_PACKED(Z_ARRVAL_P(return_value)) {
+			i = 0;
+			n = 0;
+			p = ZEND_CALL_ARG(ex, 1);
+			if (arg_count > first_extra_arg) {
+				while (i < first_extra_arg) {
+					q = p;
+					if (EXPECTED(Z_TYPE_INFO_P(q) != IS_UNDEF)) {
+						ZVAL_DEREF(q);
+						if (Z_OPT_REFCOUNTED_P(q)) { 
+							Z_ADDREF_P(q);
+						}
+						n++;
+					}
+					ZEND_HASH_FILL_ADD(q);
+					p++;
+					i++;
+				}
+				p = ZEND_CALL_VAR_NUM(ex, ex->func->op_array.last_var + ex->func->op_array.T);
+			}
+			while (i < arg_count) {
+				q = p;
+				if (EXPECTED(Z_TYPE_INFO_P(q) != IS_UNDEF)) {
+					ZVAL_DEREF(q);
+					if (Z_OPT_REFCOUNTED_P(q)) { 
+						Z_ADDREF_P(q);
+					}
+					n++;
+				}
+				ZEND_HASH_FILL_ADD(q);
+				p++;
+				i++;
+			}
+		} ZEND_HASH_FILL_END();
+		Z_ARRVAL_P(return_value)->nNumOfElements = n;
+	}
+    return return_value;
 
 }
 
@@ -420,9 +480,7 @@ zend_module_entry aop_module_entry =
     PHP_RINIT(aop),
     PHP_RSHUTDOWN(aop),
     NULL,
-#if ZEND_MODULE_API_NO >= 20010901
-    PHP_AOP_VERSION,
-#endif
+    "0.0.1",
     STANDARD_MODULE_PROPERTIES
 };
 
@@ -559,13 +617,16 @@ PHP_MINIT_FUNCTION(aop)
 aop_func_info * make_aop_func_info_from_execute_data(zend_execute_data *execute_data) {
     aop_func_info *to_return_ptr = emalloc(sizeof(aop_func_info));
     to_return_ptr->func_ptr = execute_data->func;
-    ZVAL_UNDEF(&to_return_ptr->obj);
+    //to_return_ptr->obj = execute_data->This;
+    //ZVAL_UNDEF(&to_return_ptr->obj);
     ZVAL_UNDEF(&to_return_ptr->closure);
 
     if (execute_data->func->common.scope != NULL) {
         to_return_ptr->obj = execute_data->This;
 
         if (!Z_ISUNDEF(to_return_ptr->obj) && Z_REFCOUNTED(to_return_ptr->obj) && Z_COUNTED(to_return_ptr->obj)) {
+            php_printf("REFCOUNTED");
+            php_var_dump(&to_return_ptr->obj, 1);
             Z_ADDREF(to_return_ptr->obj);
         }
         to_return_ptr->ce = execute_data->called_scope; 
@@ -816,5 +877,39 @@ PHP_MSHUTDOWN_FUNCTION(aop)
         return SUCCESS;
         */
     }
+#ifndef ZEND_EXT_API
+#define ZEND_EXT_API    ZEND_DLEXPORT
+#endif
+ZEND_EXTENSION();
+
+ZEND_DLEXPORT void test(zend_op_array *op_array) {
+ php_printf("TEST");
+}
+
+ZEND_DLEXPORT int aop_zend_startup(zend_extension *extension)
+{
+	return zend_startup_module(&aop_module_entry);
+}
+
+ZEND_DLEXPORT zend_extension zend_extension_entry = {
+    PHP_AOP_EXTNAME,
+	PHP_AOP_VERSION,
+	"",
+	"",
+	"",
+	aop_zend_startup,
+	NULL, // xdebug_zend_shutdown,
+	NULL,           /* activate_func_t */
+	NULL,           /* deactivate_func_t */
+	NULL,           /* message_handler_func_t */
+	NULL,           /* op_array_handler_func_t */
+	NULL, // xdebug_statement_call, /* statement_handler_func_t */
+	test,           /* fcall_begin_handler_func_t */
+	test,           /* fcall_end_handler_func_t */
+	NULL, // xdebug_init_oparray,   /* op_array_ctor_func_t */
+	NULL,           /* op_array_dtor_func_t */
+	STANDARD_ZEND_EXTENSION_PROPERTIES
+};
+
 
 
